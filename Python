@@ -1,0 +1,87 @@
+import pandas as pd
+import requests
+import xml.etree.ElementTree as ET
+import time
+
+metabolites_data = pd.read_csv("python.csv", encoding="latin1", delimiter = ",") 
+
+# Crear la función:
+def get_hmdb_data(hmdb_id):
+  # URL donde se buscará la información:
+    url = f"https://hmdb.ca/metabolites/{hmdb_id}.xml"
+    # Iniciamos bucle para capturar errores:
+    try:
+      # Realizar la solicitud HTTP:
+        response = requests.get(url)
+        # Valoración del código de estado del HTTP:
+        if response.status_code == 200: # Si es 200, todo OK
+            # Guardar el XML en un archivo para inspección
+            #xml_file = f"hmdb_{hmdb_id}.xml.txt"
+            #with open(xml_file, "w", encoding="utf-8") as file:
+            #    file.write(response.content.decode("utf-8"))
+            #print(f"XML guardado en {xml_file}")
+            
+            # Parseo del texto XML:
+            root = ET.fromstring(response.content)
+
+            # Definición de la función de extracción datos específicos con verificación:
+            def safe_findtext(element, path):
+              # Busqueda del subelemento específico:
+                value = element.findtext(path)
+                # Si no se encuentra, devuelve error:
+                if value is None:
+                    print(f"Etiqueta no encontrada: {path}")
+                return value
+              
+            # Conjunto de elementos que se quieren extraer:
+            name = safe_findtext(root, ".//name")
+            drugbank = safe_findtext(root, ".//drugbank_id")
+            biological_function = safe_findtext(root, ".//taxonomy/direct_parent")
+            molecular_framework = safe_findtext(root, ".//taxonomy/molecular_framework")
+            kingdom = safe_findtext(root, ".//taxonomy/kingdom")
+            super_class = safe_findtext(root, ".//taxonomy/super_class")
+            class_ = safe_findtext(root, ".//taxonomy/class")
+            sub_class = safe_findtext(root, ".//taxonomy/sub_class")
+
+            return name, drugbank, biological_function, molecular_framework, kingdom, super_class, class_, sub_class
+        else:
+          # Definición de posibles errores + código de estado de HTTP:
+            print(f"Error al obtener datos para {hmdb_id}: {response.status_code}")
+            return None, None, None, None, None, None, None, None
+    except Exception as e:
+        print(f"Excepción para {hmdb_id}: {e}")
+        return None, None, None, None, None, None, None, None
+
+# Crear nuevas columnas en el DataFrame
+for col in ["Name", "DrugbankID", "BiologicalFunction", "MolecularFramework", "Kingdom", "SuperClass", "Class", "SubClass"]:
+    metabolites_data[col] = ""
+
+# Iterar por cada fila y completar los datos
+for index, row in metabolites_data.iterrows():
+    hmdb_id = row["HMDB"]
+    # Identificación de valores no nulos:
+    if pd.notnull(hmdb_id):
+        # Información sobre el progreso
+        print(f"Procesando HMDB ID: {hmdb_id} ({index + 1}/{len(metabolites_data)})")  
+
+        # Obtener datos de HMDB
+        name, drugbank, biological_function, molecular_framework, kingdom, super_class, class_, sub_class = get_hmdb_data(hmdb_id)
+
+        # Agregar datos al DataFrame
+        metabolites_data.at[index, "Name"] = name
+        metabolites_data.at[index, "DrugbankID"] = drugbank
+        metabolites_data.at[index, "BiologicalFunction"] = biological_function
+        metabolites_data.at[index, "MolecularFramework"] = molecular_framework
+        metabolites_data.at[index, "Kingdom"] = kingdom
+        metabolites_data.at[index, "SuperClass"] = super_class
+        metabolites_data.at[index, "Class"] = class_
+        metabolites_data.at[index, "SubClass"] = sub_class
+
+        # Pausa para respetar la tasa de solicitudes (1 segundo)
+        time.sleep(1)
+
+# Guardar los resultados en un nuevo archivo
+output_file = "20241212_names_VARS_extendido.csv"
+metabolites_data.to_csv(output_file, index=False)
+print(f"Datos enriquecidos guardados en {output_file}")
+
